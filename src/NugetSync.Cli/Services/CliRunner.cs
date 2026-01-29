@@ -37,7 +37,7 @@ public static class CliRunner
         return await result.MapResult(
             (InitOptions opts) => RunInitAsync(opts),
             (RunOptions opts) => RunRunAsync(opts),
-            (RunAllOptions _) => RunAllAndMergeAsync(),
+            (RunAllOptions opts) => RunAllAndMergeAsync(opts),
             (MergeOptions _) => Task.FromResult(RunMerge()),
             (ListOptions _) => Task.FromResult(ListParsedRepos()),
             (RulesOptions opts) => RunRulesAsync(opts),
@@ -76,12 +76,12 @@ public static class CliRunner
             ? GetDefaultInventoryPath(dataRoot, repoRoot)
             : opts.Inventory;
 
-        return RunForRepoAsync(repoRoot, rulesPath, outputPath, inventoryPath, opts.IncludeTransitive);
+        return RunForRepoAsync(repoRoot, rulesPath, outputPath, inventoryPath, opts.IncludeTransitive, opts.Force);
     }
 
-    private static async Task<int> RunAllAndMergeAsync()
+    private static async Task<int> RunAllAndMergeAsync(RunAllOptions opts)
     {
-        var runAllResult = await RunAllAsync();
+        var runAllResult = await RunAllAsync(opts.Force);
         if (runAllResult != 0)
         {
             return runAllResult;
@@ -122,7 +122,7 @@ public static class CliRunner
         return 2;
     }
 
-    private static async Task<int> RunAllAsync()
+    private static async Task<int> RunAllAsync(bool force)
     {
         var settings = SettingsStore.LoadOrThrow();
         var repoRoots = LoadInventoryRepoRoots(settings).ToList();
@@ -141,7 +141,7 @@ public static class CliRunner
             var outputPath = GetDefaultOutputPath(settings.DataRoot, normalized);
             var inventoryPath = GetDefaultInventoryPath(settings.DataRoot, normalized);
 
-            var runResult = await RunForRepoAsync(normalized, rulesPath, outputPath, inventoryPath, includeTransitive: true);
+            var runResult = await RunForRepoAsync(normalized, rulesPath, outputPath, inventoryPath, includeTransitive: true, force: force);
             if (runResult != 0)
             {
                 exitCode = runResult;
@@ -194,7 +194,7 @@ public static class CliRunner
             var outputPath = GetDefaultOutputPath(settings.DataRoot, normalized);
             var inventoryPath = GetDefaultInventoryPath(settings.DataRoot, normalized);
 
-            var runResult = await RunForRepoAsync(normalized, rulesPath, outputPath, inventoryPath, includeTransitive: true);
+            var runResult = await RunForRepoAsync(normalized, rulesPath, outputPath, inventoryPath, includeTransitive: true, force: false);
             if (runResult != 0)
             {
                 exitCode = runResult;
@@ -290,7 +290,8 @@ public static class CliRunner
         string rulesPath,
         string outputPath,
         string inventoryPath,
-        bool includeTransitive)
+        bool includeTransitive,
+        bool force)
     {
         var repoKey = PathHelpers.GetRepoKey(repoRoot);
         var outputDir = Path.GetDirectoryName(outputPath)!;
@@ -300,7 +301,8 @@ public static class CliRunner
         Directory.CreateDirectory(inventoryDir);
 
         var projectUrl = GitInfoProvider.GetProjectUrl(repoRoot);
-        var repoRef = GitInfoProvider.GetRepoRef(repoRoot);
+        var branchName = GitInfoProvider.GetRepoRef(repoRoot) ?? string.Empty;
+        var commitSha = GitInfoProvider.GetCommitSha(repoRoot) ?? string.Empty;
 
         var rulesModel = RuleEngine.LoadRules(rulesPath);
         var listTargets = DotnetListPackageRunner.DiscoverTargets(repoRoot);
@@ -308,10 +310,18 @@ public static class CliRunner
         {
             RepoRoot = Path.GetFullPath(repoRoot),
             ProjectUrl = projectUrl ?? string.Empty,
-            RepoRef = repoRef ?? string.Empty,
+            RepoRef = branchName,
+            BranchName = branchName,
+            CommitSha = commitSha,
             GeneratedAtUtc = DateTime.UtcNow,
             Projects = new List<ProjectInventory>()
         };
+
+        if (!force && ShouldSkipAnalysis(inventoryPath, branchName, commitSha))
+        {
+            Log.Information("Skipping analysis for {RepoRoot} (unchanged branch/commit).", repoRoot);
+            return 0;
+        }
 
         if (listTargets.Count == 0)
         {
@@ -378,6 +388,41 @@ public static class CliRunner
         return Path.GetFullPath(trimmed);
     }
 
+    private static bool ShouldSkipAnalysis(string inventoryPath, string branchName, string commitSha)
+    {
+        if (string.IsNullOrWhiteSpace(branchName) || string.IsNullOrWhiteSpace(commitSha))
+        {
+            return false;
+        }
+
+        if (!File.Exists(inventoryPath))
+        {
+            return false;
+        }
+
+        try
+        {
+            var json = File.ReadAllText(inventoryPath);
+            using var doc = JsonDocument.Parse(json);
+            var root = doc.RootElement;
+
+            if (!root.TryGetProperty("BranchName", out var branchElement) ||
+                !root.TryGetProperty("CommitSha", out var shaElement))
+            {
+                return false;
+            }
+
+            var prevBranch = branchElement.GetString();
+            var prevSha = shaElement.GetString();
+            return string.Equals(prevBranch, branchName, StringComparison.OrdinalIgnoreCase) &&
+                   string.Equals(prevSha, commitSha, StringComparison.OrdinalIgnoreCase);
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
     [Verb("init", HelpText = "Initialize settings.")]
     private sealed class InitOptions
     {
@@ -402,11 +447,16 @@ public static class CliRunner
 
         [Option("include-transitive", Default = true, HelpText = "Include transitive packages.")]
         public bool IncludeTransitive { get; set; } = true;
+
+        [Option("force", Default = false, HelpText = "Force analysis even if unchanged.")]
+        public bool Force { get; set; }
     }
 
     [Verb("run-all", HelpText = "Run analysis against all parsed repo roots.")]
     private sealed class RunAllOptions
     {
+        [Option("force", Default = false, HelpText = "Force analysis even if unchanged.")]
+        public bool Force { get; set; }
     }
 
     [Verb("merge", HelpText = "Merge all report TSV files into a mega report.")]

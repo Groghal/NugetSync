@@ -5,6 +5,8 @@ public sealed class RepoInventory
     public string RepoRoot { get; set; } = string.Empty;
     public string ProjectUrl { get; set; } = string.Empty;
     public string RepoRef { get; set; } = string.Empty;
+    public string BranchName { get; set; } = string.Empty;
+    public string CommitSha { get; set; } = string.Empty;
     public DateTime GeneratedAtUtc { get; set; }
     public List<ProjectInventory> Projects { get; set; } = new();
 }

@@ -212,7 +212,8 @@ public class UnitTest1
             "--rules", rulesPath,
             "--output", reportPath,
             "--inventory", inventoryPath,
-            "--include-transitive", "false"
+            "--include-transitive", "false",
+            "--force"
         });
 
         Assert.Equal(0, exit);
@@ -224,6 +225,76 @@ public class UnitTest1
         Assert.Contains("Newtonsoft.Json", reportText);
         Assert.Contains("Serilog", reportText);
         Assert.Contains("Dapper", reportText);
+    }
+
+    [Fact]
+    public async Task CliRunner_SkipsWhenBranchAndCommitMatch()
+    {
+        var repoRoot = GetRepoRoot();
+        var dataRoot = Path.Combine(repoRoot, "tests", ".temp", "skip-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dataRoot);
+        File.WriteAllText(Path.Combine(dataRoot, "nugetsyncrules.json"), "{\"schemaVersion\":1,\"packages\":[]}");
+
+        using var settingsScope = new SettingsFileScope();
+        SettingsStore.Save(new Settings { DataRoot = dataRoot });
+
+        var repoKey = PathHelpers.GetRepoKey(repoRoot);
+        var outputsDir = Path.Combine(dataRoot, "outputs", repoKey);
+        Directory.CreateDirectory(outputsDir);
+        var inventoryPath = Path.Combine(outputsDir, "NugetSync.Inventory.json");
+        var reportPath = Path.Combine(outputsDir, "NugetSync.Report.tsv");
+
+        var branch = GitInfoProvider.GetRepoRef(repoRoot) ?? string.Empty;
+        var sha = GitInfoProvider.GetCommitSha(repoRoot) ?? string.Empty;
+
+        var inventory = new RepoInventory
+        {
+            RepoRoot = repoRoot,
+            BranchName = branch,
+            CommitSha = sha,
+            GeneratedAtUtc = DateTime.UtcNow
+        };
+
+        InventoryWriter.Write(inventoryPath, inventory);
+
+        var exit = await CliRunner.RunAsync(new[] { "run", "--repo", repoRoot, "--output", reportPath, "--inventory", inventoryPath });
+        Assert.Equal(0, exit);
+        Assert.False(File.Exists(reportPath));
+    }
+
+    [Fact]
+    public async Task CliRunner_ForceBypassesSkip()
+    {
+        var repoRoot = GetRepoRoot();
+        var dataRoot = Path.Combine(repoRoot, "tests", ".temp", "force-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dataRoot);
+        File.WriteAllText(Path.Combine(dataRoot, "nugetsyncrules.json"), "{\"schemaVersion\":1,\"packages\":[]}");
+
+        using var settingsScope = new SettingsFileScope();
+        SettingsStore.Save(new Settings { DataRoot = dataRoot });
+
+        var repoKey = PathHelpers.GetRepoKey(repoRoot);
+        var outputsDir = Path.Combine(dataRoot, "outputs", repoKey);
+        Directory.CreateDirectory(outputsDir);
+        var inventoryPath = Path.Combine(outputsDir, "NugetSync.Inventory.json");
+        var reportPath = Path.Combine(outputsDir, "NugetSync.Report.tsv");
+
+        var branch = GitInfoProvider.GetRepoRef(repoRoot) ?? string.Empty;
+        var sha = GitInfoProvider.GetCommitSha(repoRoot) ?? string.Empty;
+
+        var inventory = new RepoInventory
+        {
+            RepoRoot = repoRoot,
+            BranchName = branch,
+            CommitSha = sha,
+            GeneratedAtUtc = DateTime.UtcNow
+        };
+
+        InventoryWriter.Write(inventoryPath, inventory);
+
+        var exit = await CliRunner.RunAsync(new[] { "run", "--repo", repoRoot, "--output", reportPath, "--inventory", inventoryPath, "--force" });
+        Assert.Equal(0, exit);
+        Assert.True(File.Exists(reportPath));
     }
 
     [Fact]

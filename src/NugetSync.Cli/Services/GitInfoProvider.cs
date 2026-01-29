@@ -66,6 +66,12 @@ public static class GitInfoProvider
         return string.IsNullOrWhiteSpace(sha) ? null : sha;
     }
 
+    public static string? GetCommitSha(string repoRoot)
+    {
+        var sha = RunGit(repoRoot, "rev-parse HEAD")?.Trim();
+        return string.IsNullOrWhiteSpace(sha) ? null : sha;
+    }
+
     private static string? RunGit(string repoRoot, string args)
     {
         try

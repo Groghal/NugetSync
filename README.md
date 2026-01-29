@@ -93,8 +93,8 @@ ProjectUrl, RepoRef, CsprojPath, Frameworks, NugetName, Action, TargetVersion, C
 
 ```
 dotnet dotnet-nugetsync init --data-root <path>
-dotnet dotnet-nugetsync run [--repo <path>] [--rules <path>] [--output <path>] [--inventory <path>] [--include-transitive true|false]
-dotnet dotnet-nugetsync run-all
+dotnet dotnet-nugetsync run [--repo <path>] [--rules <path>] [--output <path>] [--inventory <path>] [--include-transitive true|false] [--force]
+dotnet dotnet-nugetsync run-all [--force]
 dotnet dotnet-nugetsync merge
 dotnet dotnet-nugetsync list
 dotnet dotnet-nugetsync interactive
@@ -130,6 +130,7 @@ Enter one package ID per line and finish with `done`.
 --output <path>
 --inventory <path>
 --include-transitive true|false
+--force
 ```
 
 ## Tests and coverage
