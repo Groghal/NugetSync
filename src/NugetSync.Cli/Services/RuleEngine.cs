@@ -48,6 +48,12 @@ public static class RuleEngine
                     continue;
                 }
 
+                var includeTransitive = rule.IncludeTransitive ?? rules.DefaultIncludeTransitive;
+                if (package.IsTransitive && !includeTransitive)
+                {
+                    continue;
+                }
+
                 var action = rule.Action?.Trim().ToLowerInvariant() ?? "upgrade";
                 var currentVersion = package.ResolvedVersion;
 
@@ -60,6 +66,7 @@ public static class RuleEngine
                         CsprojPath = project.CsprojPath,
                         Frameworks = FormatFrameworks(package.Frameworks),
                         NugetName = package.Id,
+                        IsTransitive = package.IsTransitive,
                         Action = "remove",
                         TargetVersion = string.Empty,
                         Comment = SelectComment(rule, currentVersion),
@@ -92,6 +99,7 @@ public static class RuleEngine
                     CsprojPath = project.CsprojPath,
                     Frameworks = FormatFrameworks(package.Frameworks),
                     NugetName = package.Id,
+                    IsTransitive = package.IsTransitive,
                     Action = "upgrade",
                     TargetVersion = rule.TargetVersion ?? string.Empty,
                     Comment = SelectComment(rule, currentVersion),
@@ -109,6 +117,7 @@ public static class RuleEngine
                     CsprojPath = project.CsprojPath,
                     Frameworks = FormatProjectFrameworks(project),
                     NugetName = string.Empty,
+                    IsTransitive = false,
                     Action = "up to date",
                     TargetVersion = string.Empty,
                     Comment = string.Empty,
@@ -134,12 +143,17 @@ public static class RuleEngine
                     {
                         Id = package.Id,
                         ResolvedVersion = package.ResolvedVersion,
+                        IsTransitive = package.IsTransitive,
                         Frameworks = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
                     };
                     existing = map[package.Id];
                 }
 
                 existing.Frameworks.Add(framework.Tfm);
+                if (!package.IsTransitive)
+                {
+                    existing.IsTransitive = false;
+                }
 
                 if (TryCompareVersion(package.ResolvedVersion, existing.ResolvedVersion, out var isHigher) && isHigher)
                 {
@@ -166,6 +180,7 @@ public static class RuleEngine
     {
         public string Id { get; init; } = string.Empty;
         public string? ResolvedVersion { get; set; }
+        public bool IsTransitive { get; set; } = true;
         public HashSet<string> Frameworks { get; init; } = new(StringComparer.OrdinalIgnoreCase);
     }
 

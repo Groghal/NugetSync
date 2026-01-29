@@ -86,7 +86,27 @@ Minimal example:
 The TSV report columns are:
 
 ```
-ProjectUrl, RepoRef, CsprojPath, Frameworks, NugetName, Action, TargetVersion, Comment, DateUpdated
+ProjectUrl, RepoRef, CsprojPath, Frameworks, NugetName, IsTransitive, Action, TargetVersion, Comment, DateUpdated
+```
+
+## Transitive packages
+
+By default, rules apply only to direct (top-level) packages. Transitive packages are skipped unless you opt in.
+
+- **DefaultIncludeTransitive** (rules file): global default for all rules. Set to `true` to include transitive packages by default.
+- **IncludeTransitive** (per package rule): override for a single rule. `true` = include transitive; `false` = direct only; omit or `null` = use global default.
+
+Example: include transitive for one rule only:
+
+```json
+{
+  "schemaVersion": 1,
+  "DefaultIncludeTransitive": false,
+  "packages": [
+    { "id": "Newtonsoft.Json", "action": "upgrade", "targetVersion": "13.0.3" },
+    { "id": "System.Memory", "action": "upgrade", "targetVersion": "4.5.5", "IncludeTransitive": true }
+  ]
+}
 ```
 
 ## Command reference

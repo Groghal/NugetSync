@@ -79,7 +79,7 @@ public class UnitTest1
         {
             ReportWriter.WriteTsv(path, new List<ReportRow>());
             var header = File.ReadLines(path).First();
-            Assert.Equal("ProjectUrl\tRepoRef\tCsprojPath\tFrameworks\tNugetName\tAction\tTargetVersion\tComment\tDateUpdated", header);
+            Assert.Equal("ProjectUrl\tRepoRef\tCsprojPath\tFrameworks\tNugetName\tIsTransitive\tAction\tTargetVersion\tComment\tDateUpdated", header);
         }
         finally
         {
@@ -106,6 +106,101 @@ public class UnitTest1
     }
 
     [Fact]
+    public void RuleEngine_DefaultIncludeTransitive_SkipsTransitivePackages()
+    {
+        var inventory = BuildInventoryWithDirectAndTransitive();
+        var rules = new RulesFile
+        {
+            DefaultIncludeTransitive = false,
+            Packages = new List<PackageRule>
+            {
+                new() { Id = "DirectOnly", Action = "upgrade", TargetVersion = "2.0.0", TargetPolicy = "exact_or_higher" },
+                new() { Id = "TransitiveOnly", Action = "upgrade", TargetVersion = "2.0.0", TargetPolicy = "exact_or_higher" }
+            }
+        };
+
+        var rows = RuleEngine.BuildReportRows(inventory, rules);
+
+        var directRow = rows.FirstOrDefault(r => r.NugetName == "DirectOnly");
+        var transitiveRow = rows.FirstOrDefault(r => r.NugetName == "TransitiveOnly");
+        Assert.NotNull(directRow);
+        Assert.Null(transitiveRow);
+        Assert.False(directRow.IsTransitive);
+    }
+
+    [Fact]
+    public void RuleEngine_IncludeTransitiveTrue_MatchesTransitivePackages()
+    {
+        var inventory = BuildInventoryWithDirectAndTransitive();
+        var rules = new RulesFile
+        {
+            DefaultIncludeTransitive = false,
+            Packages = new List<PackageRule>
+            {
+                new() { Id = "DirectOnly", Action = "upgrade", TargetVersion = "2.0.0", TargetPolicy = "exact_or_higher" },
+                new() { Id = "TransitiveOnly", Action = "upgrade", TargetVersion = "2.0.0", TargetPolicy = "exact_or_higher", IncludeTransitive = true }
+            }
+        };
+
+        var rows = RuleEngine.BuildReportRows(inventory, rules);
+
+        var directRow = rows.FirstOrDefault(r => r.NugetName == "DirectOnly");
+        var transitiveRow = rows.FirstOrDefault(r => r.NugetName == "TransitiveOnly");
+        Assert.NotNull(directRow);
+        Assert.NotNull(transitiveRow);
+        Assert.False(directRow.IsTransitive);
+        Assert.True(transitiveRow.IsTransitive);
+    }
+
+    [Fact]
+    public void RuleEngine_IncludeTransitiveNull_UsesDefaultIncludeTransitive()
+    {
+        var inventory = BuildInventoryWithDirectAndTransitive();
+        var rules = new RulesFile
+        {
+            DefaultIncludeTransitive = true,
+            Packages = new List<PackageRule>
+            {
+                new() { Id = "TransitiveOnly", Action = "upgrade", TargetVersion = "2.0.0", TargetPolicy = "exact_or_higher", IncludeTransitive = null }
+            }
+        };
+
+        var rows = RuleEngine.BuildReportRows(inventory, rules);
+
+        var transitiveRow = rows.FirstOrDefault(r => r.NugetName == "TransitiveOnly");
+        Assert.NotNull(transitiveRow);
+        Assert.True(transitiveRow.IsTransitive);
+    }
+
+    private static RepoInventory BuildInventoryWithDirectAndTransitive()
+    {
+        return new RepoInventory
+        {
+            ProjectUrl = "https://test",
+            RepoRef = "main",
+            Projects = new List<ProjectInventory>
+            {
+                new()
+                {
+                    CsprojPath = "test/test.csproj",
+                    Frameworks = new List<FrameworkInventory>
+                    {
+                        new()
+                        {
+                            Tfm = "net8.0",
+                            Packages = new List<PackageInventory>
+                            {
+                                new() { Id = "DirectOnly", ResolvedVersion = "1.0.0", IsTransitive = false },
+                                new() { Id = "TransitiveOnly", ResolvedVersion = "1.0.0", IsTransitive = true }
+                            }
+                        }
+                    }
+                }
+            }
+        };
+    }
+
+    [Fact]
     public void MegaReportMerger_SkipsHeadersAndKeepsRows()
     {
         var root = GetRepoRoot();
@@ -119,15 +214,15 @@ public class UnitTest1
 
         File.WriteAllText(report1, string.Join(Environment.NewLine, new[]
         {
-            "ProjectUrl\tRepoRef\tCsprojPath\tFrameworks\tNugetName\tAction\tTargetVersion\tComment\tDateUpdated",
-            "p1\tr1\tc1\tf1\tPkgA\tupgrade\t'1.0.0'\tNote A\t2026-01-29 12:00:00",
+            "ProjectUrl\tRepoRef\tCsprojPath\tFrameworks\tNugetName\tIsTransitive\tAction\tTargetVersion\tComment\tDateUpdated",
+            "p1\tr1\tc1\tf1\tPkgA\tfalse\tupgrade\t'1.0.0'\tNote A\t2026-01-29 12:00:00",
             ""
         }));
 
         File.WriteAllText(report2, string.Join(Environment.NewLine, new[]
         {
-            "ProjectUrl\tRepoRef\tCsprojPath\tFrameworks\tNugetName\tAction\tTargetVersion\tComment\tDateUpdated",
-            "p2\tr2\tc2\tf2\tPkgB\tremove\t''\tNote B\t2026-01-29 12:01:00",
+            "ProjectUrl\tRepoRef\tCsprojPath\tFrameworks\tNugetName\tIsTransitive\tAction\tTargetVersion\tComment\tDateUpdated",
+            "p2\tr2\tc2\tf2\tPkgB\tfalse\tremove\t''\tNote B\t2026-01-29 12:01:00",
             ""
         }));
 
