@@ -40,6 +40,8 @@ dotnet tool install NugetSync.Cli --add-source src/NugetSync.Cli/bin
 
 ```
 dotnet nugetsync
+or
+dotnet-nugetsync
 ```
 
 Outputs are written under:

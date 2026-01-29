@@ -6,7 +6,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <PackAsTool>true</PackAsTool>
-    <ToolCommandName>nugetsync</ToolCommandName>
+    <ToolCommandName>dotnet-nugetsync</ToolCommandName>
     <PackageId>NugetSync.Cli</PackageId>
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
     <PackageOutputPath>$(MSBuildThisFileDirectory)bin</PackageOutputPath>

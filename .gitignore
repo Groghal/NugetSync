@@ -11,6 +11,7 @@
 
 # NugetSync data/output
 .data/
+/.tools/
 **/NugetSync.Report.tsv
 **/NugetSync.Inventory.json
 .config/
