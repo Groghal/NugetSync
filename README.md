@@ -99,6 +99,7 @@ dotnet dotnet-nugetsync merge
 dotnet dotnet-nugetsync list
 dotnet dotnet-nugetsync interactive
 dotnet dotnet-nugetsync rules add
+dotnet dotnet-nugetsync rules add-mass
 ```
 
 ## Interactive rule add
@@ -109,6 +110,17 @@ dotnet dotnet-nugetsync rules add
 ```
 
 The wizard uses short numbered choices for predefined options.
+
+## Mass add rules
+
+Paste a list of package IDs and apply the same rule fields to all of them:
+
+```
+dotnet run --project src/NugetSync.Cli -- rules add-mass
+dotnet dotnet-nugetsync rules add-mass
+```
+
+Enter one package ID per line and finish with `done`.
 
 ## Optional flags
 

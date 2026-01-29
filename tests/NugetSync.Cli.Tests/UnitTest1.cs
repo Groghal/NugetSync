@@ -270,6 +270,56 @@ public class UnitTest1
     }
 
     [Fact]
+    public void RulesWizard_AddRulesMassInteractive_WritesAllPackages()
+    {
+        var repoRoot = GetRepoRoot();
+        var dataRoot = Path.Combine(repoRoot, "tests", ".temp", "wizard-mass-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dataRoot);
+
+        var input = string.Join(Environment.NewLine, new[]
+        {
+            "1",
+            "2",
+            "1.2.3",
+            "1",
+            "1.*",
+            "Shared note",
+            "2",
+            "Package.A",
+            "Package.B",
+            "Package.A",
+            "done"
+        }) + Environment.NewLine;
+
+        var originalIn = Console.In;
+        try
+        {
+            Console.SetIn(new StringReader(input));
+            RulesWizard.AddRulesMassInteractive(dataRoot);
+        }
+        finally
+        {
+            Console.SetIn(originalIn);
+        }
+
+        var rulesPath = Path.Combine(dataRoot, "nugetsyncrules.json");
+        Assert.True(File.Exists(rulesPath));
+
+        var rules = RuleEngine.LoadRules(rulesPath);
+        Assert.Equal(2, rules.Packages.Count);
+        Assert.Contains(rules.Packages, p => p.Id == "Package.A");
+        Assert.Contains(rules.Packages, p => p.Id == "Package.B");
+        Assert.All(rules.Packages, p =>
+        {
+            Assert.Equal("upgrade", p.Action);
+            Assert.Equal("exact_or_higher", p.TargetPolicy);
+            Assert.Equal("1.2.3", p.TargetVersion);
+            Assert.Single(p.Upgrades);
+            Assert.Equal("Shared note", p.Upgrades[0].Notes);
+        });
+    }
+
+    [Fact]
     public void SettingsStore_SaveAndLoad_RoundTrips()
     {
         using var settingsScope = new SettingsFileScope();

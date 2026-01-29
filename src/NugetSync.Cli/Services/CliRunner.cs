@@ -81,15 +81,22 @@ public static class CliRunner
 
     private static Task<int> RunRulesAsync(RulesOptions opts)
     {
-        if (!string.Equals(opts.Action, "add", StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(opts.Action, "add", StringComparison.OrdinalIgnoreCase))
         {
-            Console.Error.WriteLine("Unknown rules action. Use: rules add");
-            return Task.FromResult(2);
+            var settings = SettingsStore.LoadOrThrow();
+            RulesWizard.AddRuleInteractive(settings.DataRoot);
+            return Task.FromResult(0);
         }
 
-        var settings = SettingsStore.LoadOrThrow();
-        RulesWizard.AddRuleInteractive(settings.DataRoot);
-        return Task.FromResult(0);
+        if (string.Equals(opts.Action, "add-mass", StringComparison.OrdinalIgnoreCase))
+        {
+            var settings = SettingsStore.LoadOrThrow();
+            RulesWizard.AddRulesMassInteractive(settings.DataRoot);
+            return Task.FromResult(0);
+        }
+
+        Console.Error.WriteLine("Unknown rules action. Use: rules add | rules add-mass");
+        return Task.FromResult(2);
     }
 
     private static int HandleParseErrors(IEnumerable<Error> errors)
@@ -391,7 +398,7 @@ public static class CliRunner
     [Verb("rules", HelpText = "Rule management.")]
     private sealed class RulesOptions
     {
-        [Value(0, Required = true, HelpText = "Action (add).")]
+        [Value(0, Required = true, HelpText = "Action (add | add-mass).")]
         public string Action { get; set; } = string.Empty;
     }
 }
