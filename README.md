@@ -10,10 +10,10 @@ NugetSync scans a repository for NuGet packages, applies centralized rules, and 
 dotnet run --project src/NugetSync.Cli -- init --data-root "D:\NugetSyncData"
 ```
 
-2) Run in any repo root (no args):
+2) Run in any repo root:
 
 ```
-dotnet run --project src/NugetSync.Cli
+dotnet run --project src/NugetSync.Cli -- run
 ```
 
 ## Use as a local .NET tool
@@ -86,13 +86,26 @@ Minimal example:
 The TSV report columns are:
 
 ```
-ProjectUrl, RepoRef, CsprojPath, Frameworks, NugetName, Action, TargetVersion, Comment
+ProjectUrl, RepoRef, CsprojPath, Frameworks, NugetName, Action, TargetVersion, Comment, DateUpdated
+```
+
+## Command reference
+
+```
+dotnet dotnet-nugetsync init --data-root <path>
+dotnet dotnet-nugetsync run [--repo <path>] [--rules <path>] [--output <path>] [--inventory <path>] [--include-transitive true|false]
+dotnet dotnet-nugetsync run-all
+dotnet dotnet-nugetsync merge
+dotnet dotnet-nugetsync list
+dotnet dotnet-nugetsync interactive
+dotnet dotnet-nugetsync rules add
 ```
 
 ## Interactive rule add
 
 ```
 dotnet run --project src/NugetSync.Cli -- rules add
+dotnet dotnet-nugetsync rules add
 ```
 
 The wizard uses short numbered choices for predefined options.
@@ -148,6 +161,7 @@ To try them quickly:
 1) Initialize data root:
 ```
 dotnet run --project src/NugetSync.Cli -- init --data-root "D:\NugetSyncData"
+dotnet dotnet-nugetsync init --data-root "D:\NugetSyncData"
 ```
 2) Copy the sample rules file to your data root:
 ```
@@ -155,5 +169,6 @@ copy samples\TestRules\nugetsyncrules.json "D:\NugetSyncData\nugetsyncrules.json
 ```
 3) Run in repo root:
 ```
-dotnet run --project src/NugetSync.Cli
+dotnet run --project src/NugetSync.Cli -- run
+dotnet dotnet-nugetsync run
 ```

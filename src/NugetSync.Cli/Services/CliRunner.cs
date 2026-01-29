@@ -1,4 +1,5 @@
 using System.Text.Json;
+using CommandLine;
 using NugetSync.Cli.Models;
 
 namespace NugetSync.Cli.Services;
@@ -14,164 +15,91 @@ public static class CliRunner
         catch (Exception ex)
         {
             Console.Error.WriteLine($"Error: {ex.Message}");
-            PrintHelp();
             return 1;
         }
     }
 
     private static async Task<int> RunAsyncInternal(string[] args)
     {
-        if (args.Any(arg => string.Equals(arg, "--help", StringComparison.OrdinalIgnoreCase) ||
-                            string.Equals(arg, "-h", StringComparison.OrdinalIgnoreCase)))
-        {
-            PrintHelp();
-            return 0;
-        }
+        var parser = new Parser(with => with.HelpWriter = Console.Out);
+        var result = parser.ParseArguments<InitOptions, RunOptions, RunAllOptions, MergeOptions, ListOptions, RulesOptions, InteractiveOptions>(args);
 
-        if (args.Length > 0 && string.Equals(args[0], "init", StringComparison.OrdinalIgnoreCase))
-        {
-            var dataRoot = GetOptionValue(args, "--data-root");
-            if (string.IsNullOrWhiteSpace(dataRoot))
-            {
-                Console.Error.WriteLine("Missing --data-root. Example: NugetSync init --data-root \"D:\\NugetSyncData\"");
-                PrintHelp();
-                return 2;
-            }
-
-            SettingsStore.Save(new Settings { DataRoot = dataRoot });
-            Console.WriteLine("Settings saved.");
-            return 0;
-        }
-
-        if (args.Length > 0 && string.Equals(args[0], "run-all", StringComparison.OrdinalIgnoreCase))
-        {
-            var runAllResult = await RunAllAsync();
-            if (runAllResult != 0)
-            {
-                return runAllResult;
-            }
-
-            return RunMerge();
-        }
-
-        if (args.Length > 0 && string.Equals(args[0], "list", StringComparison.OrdinalIgnoreCase))
-        {
-            return ListParsedRepos();
-        }
-
-        if (args.Length > 0 && string.Equals(args[0], "merge", StringComparison.OrdinalIgnoreCase))
-        {
-            return RunMerge();
-        }
-
-        if (args.Length > 0 && string.Equals(args[0], "run", StringComparison.OrdinalIgnoreCase))
-        {
-            var remaining = args.Skip(1).ToArray();
-            return await RunDefaultAsync(remaining);
-        }
-
-        if (args.Length > 1 &&
-            string.Equals(args[0], "rules", StringComparison.OrdinalIgnoreCase) &&
-            string.Equals(args[1], "add", StringComparison.OrdinalIgnoreCase))
-        {
-            var settings = SettingsStore.LoadOrThrow();
-            RulesWizard.AddRuleInteractive(settings.DataRoot);
-            return 0;
-        }
-
-        if (args.Length == 0)
-        {
-            PrintHelp();
-            return 0;
-        }
-
-        if (args.Length > 0 && !args[0].StartsWith("-", StringComparison.Ordinal))
-        {
-            Console.Error.WriteLine("Unknown command or arguments.");
-            PrintHelp();
-            return 2;
-        }
-
-        return await RunDefaultAsync(args);
+        return await result.MapResult(
+            (InitOptions opts) => RunInitAsync(opts),
+            (RunOptions opts) => RunRunAsync(opts),
+            (RunAllOptions _) => RunAllAndMergeAsync(),
+            (MergeOptions _) => Task.FromResult(RunMerge()),
+            (ListOptions _) => Task.FromResult(ListParsedRepos()),
+            (RulesOptions opts) => RunRulesAsync(opts),
+            (InteractiveOptions _) => RunInteractiveAsync(),
+            errs => Task.FromResult(HandleParseErrors(errs)));
     }
 
-    private static async Task<int> RunDefaultAsync(string[] args)
+    private static Task<int> RunInitAsync(InitOptions opts)
+    {
+        if (string.IsNullOrWhiteSpace(opts.DataRoot))
+        {
+            Console.Error.WriteLine("Missing --data-root. Example: NugetSync init --data-root \"D:\\NugetSyncData\"");
+            return Task.FromResult(2);
+        }
+
+        SettingsStore.Save(new Settings { DataRoot = opts.DataRoot });
+        Console.WriteLine("Settings saved.");
+        return Task.FromResult(0);
+    }
+
+    private static Task<int> RunRunAsync(RunOptions opts)
     {
         var settings = SettingsStore.LoadOrThrow();
-        var repoRoot = NormalizeRepoRoot(GetOptionValue(args, "--repo") ?? Directory.GetCurrentDirectory());
-        var rulesOverride = GetOptionValue(args, "--rules");
-        var outputOverride = GetOptionValue(args, "--output");
-        var inventoryOverride = GetOptionValue(args, "--inventory");
-        var includeTransitive = GetBoolOptionValue(args, "--include-transitive", defaultValue: true);
-
+        var repoRoot = NormalizeRepoRoot(opts.Repo ?? Directory.GetCurrentDirectory());
         var dataRoot = settings.DataRoot;
+        var rulesPath = string.IsNullOrWhiteSpace(opts.Rules)
+            ? Path.Combine(dataRoot, "nugetsyncrules.json")
+            : opts.Rules;
 
-        var rulesPath = rulesOverride ?? Path.Combine(dataRoot, "nugetsyncrules.json");
-        var outputPath = outputOverride ?? GetDefaultOutputPath(dataRoot, repoRoot);
-        var inventoryPath = inventoryOverride ?? GetDefaultInventoryPath(dataRoot, repoRoot);
+        var outputPath = string.IsNullOrWhiteSpace(opts.Output)
+            ? GetDefaultOutputPath(dataRoot, repoRoot)
+            : opts.Output;
 
-        return await RunForRepoAsync(repoRoot, rulesPath, outputPath, inventoryPath, includeTransitive);
+        var inventoryPath = string.IsNullOrWhiteSpace(opts.Inventory)
+            ? GetDefaultInventoryPath(dataRoot, repoRoot)
+            : opts.Inventory;
+
+        return RunForRepoAsync(repoRoot, rulesPath, outputPath, inventoryPath, opts.IncludeTransitive);
     }
 
-    private static string? GetOptionValue(string[] args, string name)
+    private static async Task<int> RunAllAndMergeAsync()
     {
-        for (var i = 0; i < args.Length; i++)
+        var runAllResult = await RunAllAsync();
+        if (runAllResult != 0)
         {
-            var current = args[i];
-            if (current.Equals(name, StringComparison.OrdinalIgnoreCase))
-            {
-                if (i + 1 < args.Length)
-                {
-                    return args[i + 1];
-                }
-            }
-
-            if (current.StartsWith(name + "=", StringComparison.OrdinalIgnoreCase))
-            {
-                return current[(name.Length + 1)..];
-            }
+            return runAllResult;
         }
 
-        return null;
+        return RunMerge();
     }
 
-    private static bool GetBoolOptionValue(string[] args, string name, bool defaultValue)
+    private static Task<int> RunRulesAsync(RulesOptions opts)
     {
-        var value = GetOptionValue(args, name);
-        if (value is null)
+        if (!string.Equals(opts.Action, "add", StringComparison.OrdinalIgnoreCase))
         {
-            return defaultValue;
+            Console.Error.WriteLine("Unknown rules action. Use: rules add");
+            return Task.FromResult(2);
         }
 
-        if (bool.TryParse(value, out var parsed))
-        {
-            return parsed;
-        }
-
-        return defaultValue;
+        var settings = SettingsStore.LoadOrThrow();
+        RulesWizard.AddRuleInteractive(settings.DataRoot);
+        return Task.FromResult(0);
     }
 
-    private static void PrintHelp()
+    private static int HandleParseErrors(IEnumerable<Error> errors)
     {
-        Console.WriteLine("NugetSync");
-        Console.WriteLine();
-        Console.WriteLine("Commands:");
-        Console.WriteLine("  init --data-root <path>     Initialize settings");
-        Console.WriteLine("  rules add                   Add a package rule (interactive)");
-        Console.WriteLine("  list                        List parsed repo roots (from inventory)");
-        Console.WriteLine("  merge                       Merge all reports into one mega report");
-        Console.WriteLine("  run                         Run analysis (use options below)");
-        Console.WriteLine("  run-all                     Run against all parsed repo roots");
-        Console.WriteLine();
-        Console.WriteLine("Run options:");
-        Console.WriteLine("  --repo <path>");
-        Console.WriteLine("  --rules <path>");
-        Console.WriteLine("  --output <path>");
-        Console.WriteLine("  --inventory <path>");
-        Console.WriteLine("  --include-transitive true|false");
-        Console.WriteLine();
-        Console.WriteLine("Help:");
-        Console.WriteLine("  -h, --help");
+        if (errors.Any(e => e is HelpRequestedError or VersionRequestedError))
+        {
+            return 0;
+        }
+
+        return 2;
     }
 
     private static async Task<int> RunAllAsync()
@@ -200,6 +128,63 @@ public static class CliRunner
         }
 
         return exitCode;
+    }
+
+    private static async Task<int> RunInteractiveAsync()
+    {
+        Console.WriteLine("Paste repo paths (one per line). Type 'done' to run.");
+        var repos = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        while (true)
+        {
+            var line = Console.ReadLine();
+            if (line == null)
+            {
+                break;
+            }
+
+            var trimmed = line.Trim();
+            if (trimmed.Length == 0)
+            {
+                continue;
+            }
+
+            if (string.Equals(trimmed, "done", StringComparison.OrdinalIgnoreCase))
+            {
+                break;
+            }
+
+            repos.Add(trimmed);
+        }
+
+        if (repos.Count == 0)
+        {
+            Console.Error.WriteLine("No directories provided.");
+            return 2;
+        }
+
+        var settings = SettingsStore.LoadOrThrow();
+        var exitCode = 0;
+        foreach (var repoRoot in repos)
+        {
+            var normalized = NormalizeRepoRoot(repoRoot);
+            var rulesPath = Path.Combine(settings.DataRoot, "nugetsyncrules.json");
+            var outputPath = GetDefaultOutputPath(settings.DataRoot, normalized);
+            var inventoryPath = GetDefaultInventoryPath(settings.DataRoot, normalized);
+
+            var runResult = await RunForRepoAsync(normalized, rulesPath, outputPath, inventoryPath, includeTransitive: true);
+            if (runResult != 0)
+            {
+                exitCode = runResult;
+            }
+        }
+
+        if (exitCode != 0)
+        {
+            return exitCode;
+        }
+
+        return RunMerge();
     }
 
     private static int RunMerge()
@@ -355,5 +340,58 @@ public static class CliRunner
     {
         var trimmed = repoRoot.Trim().Trim('"').TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
         return Path.GetFullPath(trimmed);
+    }
+
+    [Verb("init", HelpText = "Initialize settings.")]
+    private sealed class InitOptions
+    {
+        [Option("data-root", Required = true, HelpText = "Data root for rules and outputs.")]
+        public string DataRoot { get; set; } = string.Empty;
+    }
+
+    [Verb("run", HelpText = "Run analysis for a repository.")]
+    private sealed class RunOptions
+    {
+        [Option("repo", HelpText = "Repository root to scan. Defaults to current directory.")]
+        public string? Repo { get; set; }
+
+        [Option("rules", HelpText = "Path to rules JSON.")]
+        public string? Rules { get; set; }
+
+        [Option("output", HelpText = "Output TSV path.")]
+        public string? Output { get; set; }
+
+        [Option("inventory", HelpText = "Inventory JSON path.")]
+        public string? Inventory { get; set; }
+
+        [Option("include-transitive", Default = true, HelpText = "Include transitive packages.")]
+        public bool IncludeTransitive { get; set; } = true;
+    }
+
+    [Verb("run-all", HelpText = "Run analysis against all parsed repo roots.")]
+    private sealed class RunAllOptions
+    {
+    }
+
+    [Verb("merge", HelpText = "Merge all report TSV files into a mega report.")]
+    private sealed class MergeOptions
+    {
+    }
+
+    [Verb("list", HelpText = "List parsed repo roots from inventory.")]
+    private sealed class ListOptions
+    {
+    }
+
+    [Verb("interactive", HelpText = "Paste repo roots, end with 'done', then run and merge.")]
+    private sealed class InteractiveOptions
+    {
+    }
+
+    [Verb("rules", HelpText = "Rule management.")]
+    private sealed class RulesOptions
+    {
+        [Value(0, Required = true, HelpText = "Action (add).")]
+        public string Action { get; set; } = string.Empty;
     }
 }

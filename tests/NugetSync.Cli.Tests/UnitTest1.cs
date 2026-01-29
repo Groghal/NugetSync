@@ -141,6 +141,43 @@ public class UnitTest1
     }
 
     [Fact]
+    public async Task CliRunner_Interactive_PastesDirectoriesAndRunsMerge()
+    {
+        var repoRoot = GetRepoRoot();
+        var tempDataRoot = Path.Combine(repoRoot, "tests", ".temp", "interactive-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempDataRoot);
+        File.WriteAllText(Path.Combine(tempDataRoot, "nugetsyncrules.json"), "{\"schemaVersion\":1,\"packages\":[]}");
+
+        var input = string.Join(Environment.NewLine, new[]
+        {
+            Path.Combine(repoRoot, "samples", "SampleApp"),
+            Path.Combine(repoRoot, "samples", "SampleApp2"),
+            Path.Combine(repoRoot, "samples", "SampleApp"),
+            "done"
+        }) + Environment.NewLine;
+
+        using var settingsScope = new SettingsFileScope();
+        SettingsStore.Save(new Settings { DataRoot = tempDataRoot });
+
+        var originalIn = Console.In;
+        try
+        {
+            Console.SetIn(new StringReader(input));
+            var exit = await CliRunner.RunAsync(new[] { "interactive" });
+            Assert.Equal(0, exit);
+        }
+        finally
+        {
+            Console.SetIn(originalIn);
+        }
+
+        var outputsRoot = Path.Combine(tempDataRoot, "outputs");
+        var megaPath = Path.Combine(outputsRoot, "NugetSync.MegaReport.tsv");
+        Assert.True(File.Exists(megaPath));
+        Assert.True(Directory.EnumerateFiles(outputsRoot, "NugetSync.Report.tsv", SearchOption.AllDirectories).Any());
+    }
+
+    [Fact]
     public void DotnetListPackageRunner_DiscoverTargets_ReturnsCsprojList()
     {
         var repoRoot = GetRepoRoot();
@@ -170,6 +207,7 @@ public class UnitTest1
 
         var exit = await CliRunner.RunAsync(new[]
         {
+            "run",
             "--repo", repoRoot,
             "--rules", rulesPath,
             "--output", reportPath,
