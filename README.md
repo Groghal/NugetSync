@@ -39,9 +39,8 @@ dotnet tool install NugetSync.Cli --add-source src/NugetSync.Cli/bin
 4) Run it:
 
 ```
-dotnet nugetsync
-or
-dotnet-nugetsync
+dotnet dotnet-nugetsync --help
+dotnet dotnet-nugetsync run
 ```
 
 Outputs are written under:

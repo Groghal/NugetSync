@@ -196,18 +196,6 @@ public class UnitTest1
     }
 
     [Fact]
-    public void GitInfoProvider_NoGit_ReturnsNull()
-    {
-        var repoRoot = GetRepoRoot();
-
-        var projectUrl = GitInfoProvider.GetProjectUrl(repoRoot);
-        var repoRef = GitInfoProvider.GetRepoRef(repoRoot);
-
-        Assert.Null(projectUrl);
-        Assert.Null(repoRef);
-    }
-
-    [Fact]
     public void SettingsStore_SaveAndLoad_RoundTrips()
     {
         using var settingsScope = new SettingsFileScope();

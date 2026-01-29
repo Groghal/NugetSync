@@ -57,6 +57,6 @@ public static class ReportWriter
             return string.Empty;
         }
 
-        return $"\"{value}\"";
+        return $"'{value}'";
     }
 }

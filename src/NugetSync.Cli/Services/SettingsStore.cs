@@ -72,6 +72,7 @@ public static class SettingsStore
 
         var trimmed = dataRoot.Trim();
         trimmed = trimmed.Replace("\"", string.Empty).Trim();
+        trimmed = trimmed.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
         return trimmed;
     }
 }
