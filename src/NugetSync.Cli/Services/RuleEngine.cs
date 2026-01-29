@@ -62,7 +62,8 @@ public static class RuleEngine
                         NugetName = package.Id,
                         Action = "remove",
                         TargetVersion = string.Empty,
-                        Comment = SelectComment(rule, currentVersion)
+                        Comment = SelectComment(rule, currentVersion),
+                        DateUpdatedLocal = DateTime.Now
                     });
                     projectHadAction = true;
                     continue;
@@ -93,7 +94,8 @@ public static class RuleEngine
                     NugetName = package.Id,
                     Action = "upgrade",
                     TargetVersion = rule.TargetVersion ?? string.Empty,
-                    Comment = SelectComment(rule, currentVersion)
+                    Comment = SelectComment(rule, currentVersion),
+                    DateUpdatedLocal = DateTime.Now
                 });
                 projectHadAction = true;
             }
@@ -109,7 +111,8 @@ public static class RuleEngine
                     NugetName = string.Empty,
                     Action = "up to date",
                     TargetVersion = string.Empty,
-                    Comment = string.Empty
+                    Comment = string.Empty,
+                    DateUpdatedLocal = DateTime.Now
                 });
             }
         }

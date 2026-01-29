@@ -45,12 +45,23 @@ public static class CliRunner
 
         if (args.Length > 0 && string.Equals(args[0], "run-all", StringComparison.OrdinalIgnoreCase))
         {
-            return await RunAllAsync();
+            var runAllResult = await RunAllAsync();
+            if (runAllResult != 0)
+            {
+                return runAllResult;
+            }
+
+            return RunMerge();
         }
 
         if (args.Length > 0 && string.Equals(args[0], "list", StringComparison.OrdinalIgnoreCase))
         {
             return ListParsedRepos();
+        }
+
+        if (args.Length > 0 && string.Equals(args[0], "merge", StringComparison.OrdinalIgnoreCase))
+        {
+            return RunMerge();
         }
 
         if (args.Length > 0 && string.Equals(args[0], "run", StringComparison.OrdinalIgnoreCase))
@@ -148,6 +159,7 @@ public static class CliRunner
         Console.WriteLine("  init --data-root <path>     Initialize settings");
         Console.WriteLine("  rules add                   Add a package rule (interactive)");
         Console.WriteLine("  list                        List parsed repo roots (from inventory)");
+        Console.WriteLine("  merge                       Merge all reports into one mega report");
         Console.WriteLine("  run                         Run analysis (use options below)");
         Console.WriteLine("  run-all                     Run against all parsed repo roots");
         Console.WriteLine();
@@ -188,6 +200,16 @@ public static class CliRunner
         }
 
         return exitCode;
+    }
+
+    private static int RunMerge()
+    {
+        var settings = SettingsStore.LoadOrThrow();
+        var outputsRoot = Path.Combine(settings.DataRoot, "outputs");
+        var outputPath = Path.Combine(outputsRoot, "NugetSync.MegaReport.tsv");
+        MegaReportMerger.MergeReports(outputsRoot, outputPath);
+        Console.WriteLine($"Mega report: {outputPath}");
+        return 0;
     }
 
     private static int ListParsedRepos()

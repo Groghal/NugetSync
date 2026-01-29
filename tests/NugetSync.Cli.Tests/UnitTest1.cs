@@ -78,7 +78,7 @@ public class UnitTest1
         {
             ReportWriter.WriteTsv(path, new List<ReportRow>());
             var header = File.ReadLines(path).First();
-            Assert.Equal("ProjectUrl\tRepoRef\tCsprojPath\tFrameworks\tNugetName\tAction\tTargetVersion\tComment", header);
+            Assert.Equal("ProjectUrl\tRepoRef\tCsprojPath\tFrameworks\tNugetName\tAction\tTargetVersion\tComment\tDateUpdated", header);
         }
         finally
         {
@@ -102,6 +102,42 @@ public class UnitTest1
             Assert.False(string.IsNullOrWhiteSpace(row.CsprojPath));
             Assert.True(string.IsNullOrWhiteSpace(row.NugetName));
         }
+    }
+
+    [Fact]
+    public void MegaReportMerger_SkipsHeadersAndKeepsRows()
+    {
+        var root = GetRepoRoot();
+        var tempDir = Path.Combine(root, "tests", ".temp", "merge-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempDir);
+
+        var report1 = Path.Combine(tempDir, "repo1", "NugetSync.Report.tsv");
+        var report2 = Path.Combine(tempDir, "repo2", "NugetSync.Report.tsv");
+        Directory.CreateDirectory(Path.GetDirectoryName(report1)!);
+        Directory.CreateDirectory(Path.GetDirectoryName(report2)!);
+
+        File.WriteAllText(report1, string.Join(Environment.NewLine, new[]
+        {
+            "ProjectUrl\tRepoRef\tCsprojPath\tFrameworks\tNugetName\tAction\tTargetVersion\tComment\tDateUpdated",
+            "p1\tr1\tc1\tf1\tPkgA\tupgrade\t'1.0.0'\tNote A\t2026-01-29 12:00:00",
+            ""
+        }));
+
+        File.WriteAllText(report2, string.Join(Environment.NewLine, new[]
+        {
+            "ProjectUrl\tRepoRef\tCsprojPath\tFrameworks\tNugetName\tAction\tTargetVersion\tComment\tDateUpdated",
+            "p2\tr2\tc2\tf2\tPkgB\tremove\t''\tNote B\t2026-01-29 12:01:00",
+            ""
+        }));
+
+        var outputPath = Path.Combine(tempDir, "NugetSync.MegaReport.tsv");
+        MegaReportMerger.MergeReports(tempDir, outputPath);
+
+        var lines = File.ReadAllLines(outputPath);
+        Assert.Equal(3, lines.Length);
+        Assert.StartsWith("ProjectUrl\tRepoRef", lines[0]);
+        Assert.Contains("PkgA", lines[1]);
+        Assert.Contains("PkgB", lines[2]);
     }
 
     [Fact]
