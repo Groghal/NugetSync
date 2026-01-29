@@ -1,0 +1,83 @@
+{
+  "schemaVersion": 1,
+  "packages": [
+    {
+      "id": "Newtonsoft.Json",
+      "action": "upgrade",
+      "targetVersion": "13.0.5",
+      "targetPolicy": "exact_or_higher",
+      "upgrades": [
+        {
+          "from": "13.0.4",
+          "to": "13.0.5",
+          "notes": "Exact-or-higher test: upgrade to 13.0.5."
+        }
+      ]
+    },
+    {
+      "id": "Serilog",
+      "action": "remove",
+      "targetVersion": null,
+      "targetPolicy": "none",
+      "upgrades": [
+        {
+          "from": "*",
+          "to": "(remove)",
+          "notes": "Remove test: remove Serilog from sample."
+        }
+      ]
+    },
+    {
+      "id": "Dapper",
+      "action": "upgrade",
+      "targetVersion": "2.1.40",
+      "targetPolicy": "higher",
+      "upgrades": [
+        {
+          "from": "2.1.*",
+          "to": "2.1.40",
+          "notes": "Higher test: upgrade to >2.1.40."
+        }
+      ]
+    },
+    {
+      "id": "Polly",
+      "action": "upgrade",
+      "targetVersion": "7.0.0",
+      "targetPolicy": "lower",
+      "upgrades": [
+        {
+          "from": "7.2.*",
+          "to": "7.0.0",
+          "notes": "Lower test: downgrade below 7.0.0."
+        }
+      ]
+    },
+    {
+      "id": "Humanizer",
+      "action": "upgrade",
+      "targetVersion": "2.13.0",
+      "targetPolicy": "exact_or_lower",
+      "upgrades": [
+        {
+          "from": "[2.14.0,3.0.0)",
+          "to": "2.13.0",
+          "notes": "Exact-or-lower test: downgrade to 2.13.0."
+        }
+      ]
+    },
+    {
+      "id": "NodaTime",
+      "action": "upgrade",
+      "targetVersion": "3.1.8",
+      "targetPolicy": "exact",
+      "upgrades": [
+        {
+          "from": "3.1.11",
+          "to": "3.1.8",
+          "notes": "Exact test: align to 3.1.8."
+        }
+      ]
+    }
+  ]
+}

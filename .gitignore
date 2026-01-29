@@ -1,0 +1,16 @@
+**/bin/
+**/obj/
+**/.vs/
+**/.idea/
+**/.vscode/
+**/*.user
+**/*.suo
+**/*.nupkg
+**/*.snupkg
+**/*.log
+
+# NugetSync data/output
+.data/
+**/NugetSync.Report.tsv
+**/NugetSync.Inventory.json
+.config/

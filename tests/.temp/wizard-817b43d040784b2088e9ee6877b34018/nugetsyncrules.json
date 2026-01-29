@@ -1,0 +1,18 @@
+{
+  "SchemaVersion": 1,
+  "Packages": [
+    {
+      "Id": "Test.Package",
+      "Action": "upgrade",
+      "TargetVersion": "1.2.3",
+      "TargetPolicy": "exact_or_higher",
+      "Upgrades": [
+        {
+          "From": "1.*",
+          "To": "1.2.3",
+          "Notes": "Handle breaking change."
+        }
+      ]
+    }
+  ]
+}
