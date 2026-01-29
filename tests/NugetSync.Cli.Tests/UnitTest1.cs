@@ -237,6 +237,91 @@ public class UnitTest1
     }
 
     [Fact]
+    public void ReportWriter_WritePackagesTsv_WritesAllPackages()
+    {
+        var inventory = new RepoInventory
+        {
+            ProjectUrl = "https://test/repo",
+            RepoRef = "main",
+            GeneratedAtUtc = new DateTime(2026, 1, 29, 12, 0, 0, DateTimeKind.Utc),
+            Projects = new List<ProjectInventory>
+            {
+                new()
+                {
+                    CsprojPath = "src/App/App.csproj",
+                    Frameworks = new List<FrameworkInventory>
+                    {
+                        new()
+                        {
+                            Tfm = "net8.0",
+                            Packages = new List<PackageInventory>
+                            {
+                                new() { Id = "Newtonsoft.Json", ResolvedVersion = "13.0.3", IsTransitive = false },
+                                new() { Id = "System.Memory", ResolvedVersion = "4.5.5", IsTransitive = true }
+                            }
+                        }
+                    }
+                }
+            }
+        };
+
+        var path = Path.GetTempFileName();
+        try
+        {
+            ReportWriter.WritePackagesTsv(path, inventory);
+            var lines = File.ReadAllLines(path);
+            Assert.True(lines.Length >= 2);
+            Assert.Equal("ProjectUrl\tRepoRef\tCsprojPath\tFramework\tPackage\tVersion\tIsTransitive\tDateUpdated", lines[0]);
+            Assert.Contains("Newtonsoft.Json", lines[1]);
+            Assert.Contains("13.0.3", lines[1]);
+            Assert.Contains("FALSE", lines[1]);
+            Assert.Contains("System.Memory", lines[2]);
+            Assert.Contains("4.5.5", lines[2]);
+            Assert.Contains("TRUE", lines[2]);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [Fact]
+    public void MegaReportMerger_MergesPackagesReports()
+    {
+        var root = GetRepoRoot();
+        var tempDir = Path.Combine(root, "tests", ".temp", "merge-packages-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempDir);
+
+        var report1 = Path.Combine(tempDir, "repo1", "NugetSync.Packages.tsv");
+        var report2 = Path.Combine(tempDir, "repo2", "NugetSync.Packages.tsv");
+        Directory.CreateDirectory(Path.GetDirectoryName(report1)!);
+        Directory.CreateDirectory(Path.GetDirectoryName(report2)!);
+
+        File.WriteAllText(report1, string.Join(Environment.NewLine, new[]
+        {
+            "ProjectUrl\tRepoRef\tCsprojPath\tFramework\tPackage\tVersion\tIsTransitive\tDateUpdated",
+            "url1\tref1\tproj1\tnet8.0\tPkgA\t1.0.0\tFALSE\t2026-01-29 12:00:00",
+            ""
+        }));
+
+        File.WriteAllText(report2, string.Join(Environment.NewLine, new[]
+        {
+            "ProjectUrl\tRepoRef\tCsprojPath\tFramework\tPackage\tVersion\tIsTransitive\tDateUpdated",
+            "url2\tref2\tproj2\tnet8.0\tPkgB\t2.0.0\tTRUE\t2026-01-29 12:01:00",
+            ""
+        }));
+
+        var outputPath = Path.Combine(tempDir, "NugetSync.MegaPackages.tsv");
+        MegaReportMerger.MergePackagesReports(tempDir, outputPath);
+
+        var lines = File.ReadAllLines(outputPath);
+        Assert.Equal(3, lines.Length);
+        Assert.StartsWith("ProjectUrl\tRepoRef", lines[0]);
+        Assert.Contains("PkgA", lines[1]);
+        Assert.Contains("PkgB", lines[2]);
+    }
+
+    [Fact]
     public async Task CliRunner_Interactive_PastesDirectoriesAndRunsMerge()
     {
         var repoRoot = GetRepoRoot();

@@ -47,8 +47,11 @@ Outputs are written under:
 
 ```
 <DataRoot>\outputs\<repoKey>\NugetSync.Report.tsv
+<DataRoot>\outputs\<repoKey>\NugetSync.Packages.tsv
 <DataRoot>\outputs\<repoKey>\NugetSync.Inventory.json
 ```
+
+The **packages report** (`NugetSync.Packages.tsv`) lists all packages from every csproj (full inventory). Columns: `ProjectUrl`, `RepoRef`, `CsprojPath`, `Framework`, `Package`, `Version`, `IsTransitive`, `DateUpdated`. After `run-all` or `merge`, a combined **mega packages report** is written as `NugetSync.MegaPackages.tsv` in the outputs folder.
 
 ## Rules file
 

@@ -44,6 +44,37 @@ public static class ReportWriter
         File.WriteAllText(path, sb.ToString(), Encoding.UTF8);
     }
 
+    public static void WritePackagesTsv(string path, RepoInventory inventory)
+    {
+        var sb = new StringBuilder();
+        sb.AppendLine("ProjectUrl\tRepoRef\tCsprojPath\tFramework\tPackage\tVersion\tIsTransitive\tDateUpdated");
+
+        var dateUpdated = inventory.GeneratedAtUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss");
+
+        foreach (var project in inventory.Projects)
+        {
+            foreach (var framework in project.Frameworks)
+            {
+                foreach (var pkg in framework.Packages)
+                {
+                    sb.AppendLine(string.Join('\t', new[]
+                    {
+                        Clean(inventory.ProjectUrl),
+                        Clean(inventory.RepoRef),
+                        Clean(project.CsprojPath),
+                        Clean(framework.Tfm),
+                        Clean(pkg.Id),
+                        Clean(pkg.ResolvedVersion ?? ""),
+                        pkg.IsTransitive ? "TRUE" : "FALSE",
+                        dateUpdated
+                    }));
+                }
+            }
+        }
+
+        File.WriteAllText(path, sb.ToString(), Encoding.UTF8);
+    }
+
     private static string Clean(string? value)
     {
         if (string.IsNullOrEmpty(value))

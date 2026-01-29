@@ -217,6 +217,10 @@ public static class CliRunner
         var outputPath = Path.Combine(outputsRoot, "NugetSync.MegaReport.tsv");
         MegaReportMerger.MergeReports(outputsRoot, outputPath);
         Log.Information("Mega report: {OutputPath}", outputPath);
+
+        var packagesOutputPath = Path.Combine(outputsRoot, "NugetSync.MegaPackages.tsv");
+        MegaReportMerger.MergePackagesReports(outputsRoot, packagesOutputPath);
+        Log.Information("Mega packages report: {OutputPath}", packagesOutputPath);
         return 0;
     }
 
@@ -420,7 +424,11 @@ public static class CliRunner
         var rows = RuleEngine.BuildReportRows(inventory, rulesModel);
         ReportWriter.WriteTsv(outputPath, rows);
 
+        var packagesPath = Path.Combine(Path.GetDirectoryName(outputPath)!, "NugetSync.Packages.tsv");
+        ReportWriter.WritePackagesTsv(packagesPath, inventory);
+
         Log.Information("Report: {ReportPath}", outputPath);
+        Log.Information("Packages report: {PackagesPath}", packagesPath);
         Log.Information("Inventory: {InventoryPath}", inventoryPath);
         return exitCode;
     }
