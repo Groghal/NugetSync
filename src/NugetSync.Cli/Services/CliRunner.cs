@@ -32,7 +32,7 @@ public static class CliRunner
     private static async Task<int> RunAsyncInternal(string[] args)
     {
         var parser = new Parser(with => with.HelpWriter = Console.Out);
-        var result = parser.ParseArguments<InitOptions, RunOptions, RunAllOptions, MergeOptions, ListOptions, RulesOptions, InteractiveOptions>(args);
+        var result = parser.ParseArguments<InitOptions, RunOptions, RunAllOptions, MergeOptions, ListOptions, RulesOptions, InteractiveOptions, UpdateOptions>(args);
 
         return await result.MapResult(
             (InitOptions opts) => RunInitAsync(opts),
@@ -42,6 +42,7 @@ public static class CliRunner
             (ListOptions _) => Task.FromResult(ListParsedRepos()),
             (RulesOptions opts) => RunRulesAsync(opts),
             (InteractiveOptions _) => RunInteractiveAsync(),
+            (UpdateOptions opts) => Task.FromResult(RunUpdate(opts)),
             errs => Task.FromResult(HandleParseErrors(errs)));
     }
 
@@ -232,6 +233,60 @@ public static class CliRunner
         foreach (var repoRoot in repoRoots)
         {
             Console.WriteLine(repoRoot);
+        }
+
+        return 0;
+    }
+
+    private static int RunUpdate(UpdateOptions opts)
+    {
+        var settings = SettingsStore.LoadOrThrow();
+        var repoRoots = LoadInventoryRepoRoots(settings).ToList();
+        if (repoRoots.Count == 0)
+        {
+            Log.Error("No parsed repositories found. Run NugetSync at least once.");
+            return 2;
+        }
+
+        var failedRepos = new List<(string repo, string error)>();
+
+        foreach (var repoRoot in repoRoots)
+        {
+            var normalized = NormalizeRepoRoot(repoRoot);
+
+            if (GitInfoProvider.HasUncommittedChanges(normalized))
+            {
+                Log.Information("Skipping {RepoRoot}: uncommitted changes.", normalized);
+                continue;
+            }
+
+            var (checkoutOk, checkoutErr) = GitInfoProvider.Checkout(normalized, opts.Branch);
+            if (!checkoutOk)
+            {
+                Log.Error("Update failed for {RepoRoot}: checkout - {Error}", normalized, checkoutErr);
+                failedRepos.Add((normalized, "checkout: " + (checkoutErr ?? "unknown")));
+                continue;
+            }
+
+            var (pullOk, pullErr) = GitInfoProvider.Pull(normalized);
+            if (!pullOk)
+            {
+                Log.Error("Update failed for {RepoRoot}: pull - {Error}", normalized, pullErr);
+                failedRepos.Add((normalized, "pull: " + (pullErr ?? "unknown")));
+                continue;
+            }
+
+            Log.Information("Updated {RepoRoot} on {Branch}.", normalized, opts.Branch);
+        }
+
+        if (failedRepos.Count > 0)
+        {
+            Log.Warning("Repositories where update failed:");
+            foreach (var (repo, error) in failedRepos)
+            {
+                Console.Error.WriteLine("  {0}: {1}", repo, error);
+            }
+            return 1;
         }
 
         return 0;
@@ -479,5 +534,12 @@ public static class CliRunner
     {
         [Value(0, Required = true, HelpText = "Action (add | add-mass).")]
         public string Action { get; set; } = string.Empty;
+    }
+
+    [Verb("update", HelpText = "Switch to branch and pull for all clean repos.")]
+    private sealed class UpdateOptions
+    {
+        [Option("branch", Default = "develop", HelpText = "Branch to checkout.")]
+        public string Branch { get; set; } = "develop";
     }
 }

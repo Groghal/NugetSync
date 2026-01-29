@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using NugetSync.Cli.Models;
 using NugetSync.Cli.Services;
 
@@ -400,6 +401,187 @@ public class UnitTest1
         var settings = SettingsStore.LoadOrThrow();
 
         Assert.Equal(tempDataRoot, settings.DataRoot);
+    }
+
+    [Fact]
+    public void GitInfoProvider_HasUncommittedChanges_ReturnsFalseWhenClean()
+    {
+        var repoRoot = CreateTempGitRepo(commit: true, extraFile: false);
+        try
+        {
+            var hasChanges = GitInfoProvider.HasUncommittedChanges(repoRoot);
+            Assert.False(hasChanges);
+        }
+        finally
+        {
+            TryDeleteDir(repoRoot);
+        }
+    }
+
+    [Fact]
+    public void GitInfoProvider_HasUncommittedChanges_ReturnsTrueWhenDirty()
+    {
+        var repoRoot = CreateTempGitRepo(commit: true, extraFile: true);
+        try
+        {
+            var hasChanges = GitInfoProvider.HasUncommittedChanges(repoRoot);
+            Assert.True(hasChanges);
+        }
+        finally
+        {
+            TryDeleteDir(repoRoot);
+        }
+    }
+
+    [Fact]
+    public void GitInfoProvider_Checkout_SwitchesBranch()
+    {
+        var repoRoot = CreateTempGitRepoWithBranches();
+        try
+        {
+            RunGit(repoRoot, "checkout main");
+            Assert.Equal("main", GitInfoProvider.GetRepoRef(repoRoot));
+
+            var (success, error) = GitInfoProvider.Checkout(repoRoot, "develop");
+            Assert.True(success, error ?? "checkout failed");
+            Assert.Equal("develop", GitInfoProvider.GetRepoRef(repoRoot));
+        }
+        finally
+        {
+            TryDeleteDir(repoRoot);
+        }
+    }
+
+    [Fact]
+    public void GitInfoProvider_Pull_ReturnsErrorWhenNoRemote()
+    {
+        var repoRoot = CreateTempGitRepo(commit: true, extraFile: false);
+        try
+        {
+            var (success, error) = GitInfoProvider.Pull(repoRoot);
+            Assert.False(success);
+            Assert.False(string.IsNullOrWhiteSpace(error));
+        }
+        finally
+        {
+            TryDeleteDir(repoRoot);
+        }
+    }
+
+    [Fact]
+    public async Task CliRunner_Update_ExitsWithErrorWhenNoRepos()
+    {
+        var repoRoot = GetRepoRoot();
+        var tempDataRoot = Path.Combine(repoRoot, "tests", ".temp", "update-none-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempDataRoot);
+
+        using var settingsScope = new SettingsFileScope();
+        SettingsStore.Save(new Settings { DataRoot = tempDataRoot });
+
+        var exit = await CliRunner.RunAsync(new[] { "update" });
+        Assert.Equal(2, exit);
+    }
+
+    [Fact]
+    public async Task CliRunner_Update_SkipsDirtyRepoAndReportsNoFailure()
+    {
+        var repoRoot = GetRepoRoot();
+        var dirtyRepo = CreateTempGitRepo(commit: true, extraFile: true);
+        var tempDataRoot = Path.Combine(repoRoot, "tests", ".temp", "update-dirty-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempDataRoot);
+        File.WriteAllText(Path.Combine(tempDataRoot, "nugetsyncrules.json"), "{\"schemaVersion\":1,\"packages\":[]}");
+
+        var repoKey = PathHelpers.GetRepoKey(dirtyRepo);
+        var outputsDir = Path.Combine(tempDataRoot, "outputs", repoKey);
+        Directory.CreateDirectory(outputsDir);
+        var inventoryPath = Path.Combine(outputsDir, "NugetSync.Inventory.json");
+        var inventory = new RepoInventory
+        {
+            RepoRoot = dirtyRepo,
+            BranchName = "main",
+            CommitSha = RunGit(dirtyRepo, "rev-parse HEAD")?.Trim() ?? "",
+            GeneratedAtUtc = DateTime.UtcNow,
+            Projects = new List<ProjectInventory>()
+        };
+        InventoryWriter.Write(inventoryPath, inventory);
+
+        using var settingsScope = new SettingsFileScope();
+        SettingsStore.Save(new Settings { DataRoot = tempDataRoot });
+
+        try
+        {
+            var exit = await CliRunner.RunAsync(new[] { "update", "--branch", "main" });
+            Assert.Equal(0, exit);
+        }
+        finally
+        {
+            TryDeleteDir(dirtyRepo);
+        }
+    }
+
+    private static string CreateTempGitRepo(bool commit, bool extraFile)
+    {
+        var repoRoot = Path.Combine(GetRepoRoot(), "tests", ".temp", "git-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(repoRoot);
+        RunGit(repoRoot, "init");
+        RunGit(repoRoot, "config user.email test@test.com");
+        RunGit(repoRoot, "config user.name Test");
+        File.WriteAllText(Path.Combine(repoRoot, "readme.txt"), "initial");
+        RunGit(repoRoot, "add readme.txt");
+        if (commit)
+        {
+            RunGit(repoRoot, "commit -m initial");
+        }
+
+        if (extraFile)
+        {
+            File.WriteAllText(Path.Combine(repoRoot, "extra.txt"), "dirty");
+        }
+
+        return repoRoot;
+    }
+
+    private static string CreateTempGitRepoWithBranches()
+    {
+        var repoRoot = CreateTempGitRepo(commit: true, extraFile: false);
+        RunGit(repoRoot, "branch -m main");
+        RunGit(repoRoot, "checkout -b develop");
+        return repoRoot;
+    }
+
+    private static string? RunGit(string repoRoot, string args)
+    {
+        var startInfo = new ProcessStartInfo
+        {
+            FileName = "git",
+            Arguments = args,
+            WorkingDirectory = repoRoot,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true
+        };
+        using var process = Process.Start(startInfo);
+        if (process == null) return null;
+        var stdout = process.StandardOutput.ReadToEnd();
+        process.StandardError.ReadToEnd();
+        process.WaitForExit(5000);
+        return process.ExitCode == 0 ? stdout.Trim() : null;
+    }
+
+    private static void TryDeleteDir(string path)
+    {
+        try
+        {
+            if (Directory.Exists(path))
+            {
+                Directory.Delete(path, recursive: true);
+            }
+        }
+        catch
+        {
+            // Best-effort cleanup.
+        }
     }
 
     private static string GetRepoRoot()

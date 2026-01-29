@@ -72,6 +72,62 @@ public static class GitInfoProvider
         return string.IsNullOrWhiteSpace(sha) ? null : sha;
     }
 
+    public static bool HasUncommittedChanges(string repoRoot)
+    {
+        var output = RunGit(repoRoot, "status --porcelain");
+        return !string.IsNullOrWhiteSpace(output);
+    }
+
+    public static (bool success, string? error) Checkout(string repoRoot, string branch)
+    {
+        var arg = "checkout \"" + branch.Replace("\"", "\\\"") + "\"";
+        return RunGitWithError(repoRoot, arg, timeoutMs: 5000);
+    }
+
+    public static (bool success, string? error) Pull(string repoRoot)
+    {
+        return RunGitWithError(repoRoot, "pull", timeoutMs: 60000);
+    }
+
+    private static (bool success, string? error) RunGitWithError(string repoRoot, string args, int timeoutMs = 5000)
+    {
+        try
+        {
+            var startInfo = new ProcessStartInfo
+            {
+                FileName = "git",
+                Arguments = args,
+                WorkingDirectory = repoRoot,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+
+            using var process = Process.Start(startInfo);
+            if (process == null)
+            {
+                return (false, "Failed to start git.");
+            }
+
+            var stderr = process.StandardError.ReadToEnd();
+            process.StandardOutput.ReadToEnd();
+            process.WaitForExit(timeoutMs);
+
+            if (process.ExitCode != 0)
+            {
+                var err = string.IsNullOrWhiteSpace(stderr) ? $"Exit code {process.ExitCode}" : stderr.Trim();
+                return (false, err);
+            }
+
+            return (true, null);
+        }
+        catch (Exception ex)
+        {
+            return (false, ex.Message);
+        }
+    }
+
     private static string? RunGit(string repoRoot, string args)
     {
         try

@@ -97,9 +97,19 @@ dotnet dotnet-nugetsync run [--repo <path>] [--rules <path>] [--output <path>] [
 dotnet dotnet-nugetsync run-all [--force]
 dotnet dotnet-nugetsync merge
 dotnet dotnet-nugetsync list
+dotnet dotnet-nugetsync update [--branch <name>]
 dotnet dotnet-nugetsync interactive
 dotnet dotnet-nugetsync rules add
 dotnet dotnet-nugetsync rules add-mass
+```
+
+## Update repos
+
+For all saved repository paths, if the working tree has no uncommitted changes, switch to the given branch (default: `develop`) and run `git pull`. Errors are logged during the run; at the end, all repos where the update failed are listed. Exit code is 1 if any repo failed.
+
+```
+dotnet dotnet-nugetsync update
+dotnet dotnet-nugetsync update --branch main
 ```
 
 ## Interactive rule add
