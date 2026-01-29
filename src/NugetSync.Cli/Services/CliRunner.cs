@@ -1,6 +1,7 @@
 using System.Text.Json;
 using CommandLine;
 using NugetSync.Cli.Models;
+using Serilog;
 
 namespace NugetSync.Cli.Services;
 
@@ -8,14 +9,23 @@ public static class CliRunner
 {
     public static async Task<int> RunAsync(string[] args)
     {
+        Log.Logger = new LoggerConfiguration()
+            .MinimumLevel.Information()
+            .WriteTo.Console()
+            .CreateLogger();
+
         try
         {
             return await RunAsyncInternal(args);
         }
         catch (Exception ex)
         {
-            Console.Error.WriteLine($"Error: {ex.Message}");
+            Log.Error(ex, "Unhandled error");
             return 1;
+        }
+        finally
+        {
+            Log.CloseAndFlush();
         }
     }
 
@@ -43,8 +53,8 @@ public static class CliRunner
             return Task.FromResult(2);
         }
 
-        SettingsStore.Save(new Settings { DataRoot = opts.DataRoot });
-        Console.WriteLine("Settings saved.");
+            SettingsStore.Save(new Settings { DataRoot = opts.DataRoot });
+            Log.Information("Settings saved.");
         return Task.FromResult(0);
     }
 
@@ -52,6 +62,7 @@ public static class CliRunner
     {
         var settings = SettingsStore.LoadOrThrow();
         var repoRoot = NormalizeRepoRoot(opts.Repo ?? Directory.GetCurrentDirectory());
+        Log.Information("Running analysis for {RepoRoot}", repoRoot);
         var dataRoot = settings.DataRoot;
         var rulesPath = string.IsNullOrWhiteSpace(opts.Rules)
             ? Path.Combine(dataRoot, "nugetsyncrules.json")
@@ -84,6 +95,7 @@ public static class CliRunner
         if (string.Equals(opts.Action, "add", StringComparison.OrdinalIgnoreCase))
         {
             var settings = SettingsStore.LoadOrThrow();
+            Log.Information("Starting interactive rule add");
             RulesWizard.AddRuleInteractive(settings.DataRoot);
             return Task.FromResult(0);
         }
@@ -91,11 +103,12 @@ public static class CliRunner
         if (string.Equals(opts.Action, "add-mass", StringComparison.OrdinalIgnoreCase))
         {
             var settings = SettingsStore.LoadOrThrow();
+            Log.Information("Starting mass rule add");
             RulesWizard.AddRulesMassInteractive(settings.DataRoot);
             return Task.FromResult(0);
         }
 
-        Console.Error.WriteLine("Unknown rules action. Use: rules add | rules add-mass");
+        Log.Error("Unknown rules action. Use: rules add | rules add-mass");
         return Task.FromResult(2);
     }
 
@@ -115,7 +128,7 @@ public static class CliRunner
         var repoRoots = LoadInventoryRepoRoots(settings).ToList();
         if (repoRoots.Count == 0)
         {
-            Console.Error.WriteLine("No parsed repositories found. Run NugetSync at least once.");
+            Log.Error("No parsed repositories found. Run NugetSync at least once.");
             return 2;
         }
 
@@ -123,6 +136,7 @@ public static class CliRunner
         foreach (var repoRoot in repoRoots)
         {
             var normalized = NormalizeRepoRoot(repoRoot);
+            Log.Information("Running analysis for {RepoRoot}", normalized);
             var rulesPath = Path.Combine(settings.DataRoot, "nugetsyncrules.json");
             var outputPath = GetDefaultOutputPath(settings.DataRoot, normalized);
             var inventoryPath = GetDefaultInventoryPath(settings.DataRoot, normalized);
@@ -139,7 +153,7 @@ public static class CliRunner
 
     private static async Task<int> RunInteractiveAsync()
     {
-        Console.WriteLine("Paste repo paths (one per line). Type 'done' to run.");
+        Log.Information("Paste repo paths (one per line). Type 'done' to run.");
         var repos = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         while (true)
@@ -166,7 +180,7 @@ public static class CliRunner
 
         if (repos.Count == 0)
         {
-            Console.Error.WriteLine("No directories provided.");
+            Log.Error("No directories provided.");
             return 2;
         }
 
@@ -175,6 +189,7 @@ public static class CliRunner
         foreach (var repoRoot in repos)
         {
             var normalized = NormalizeRepoRoot(repoRoot);
+            Log.Information("Running analysis for {RepoRoot}", normalized);
             var rulesPath = Path.Combine(settings.DataRoot, "nugetsyncrules.json");
             var outputPath = GetDefaultOutputPath(settings.DataRoot, normalized);
             var inventoryPath = GetDefaultInventoryPath(settings.DataRoot, normalized);
@@ -200,7 +215,7 @@ public static class CliRunner
         var outputsRoot = Path.Combine(settings.DataRoot, "outputs");
         var outputPath = Path.Combine(outputsRoot, "NugetSync.MegaReport.tsv");
         MegaReportMerger.MergeReports(outputsRoot, outputPath);
-        Console.WriteLine($"Mega report: {outputPath}");
+        Log.Information("Mega report: {OutputPath}", outputPath);
         return 0;
     }
 
@@ -210,7 +225,7 @@ public static class CliRunner
         var repoRoots = LoadInventoryRepoRoots(settings).ToList();
         if (repoRoots.Count == 0)
         {
-            Console.WriteLine("No parsed repositories found.");
+            Log.Information("No parsed repositories found.");
             return 0;
         }
 
@@ -289,12 +304,6 @@ public static class CliRunner
 
         var rulesModel = RuleEngine.LoadRules(rulesPath);
         var listTargets = DotnetListPackageRunner.DiscoverTargets(repoRoot);
-        if (listTargets.Count == 0)
-        {
-            Console.Error.WriteLine($"No .sln or .csproj found in repo: {repoRoot}");
-            return 2;
-        }
-
         var inventory = new RepoInventory
         {
             RepoRoot = Path.GetFullPath(repoRoot),
@@ -304,21 +313,41 @@ public static class CliRunner
             Projects = new List<ProjectInventory>()
         };
 
+        if (listTargets.Count == 0)
+        {
+            Log.Error("No .sln or .csproj found in repo: {RepoRoot}", repoRoot);
+            InventoryWriter.Write(inventoryPath, inventory);
+            return 2;
+        }
+
+        var exitCode = 0;
         foreach (var target in listTargets)
         {
-            await DotnetListPackageRunner.RestoreAsync(repoRoot, target);
-            var json = await DotnetListPackageRunner.ListPackagesJsonAsync(repoRoot, target, includeTransitive);
-            var projects = DotnetListPackageParser.Parse(json, repoRoot);
-            if (projects.Count == 0)
+            try
             {
+                await DotnetListPackageRunner.RestoreAsync(repoRoot, target);
+                var json = await DotnetListPackageRunner.ListPackagesJsonAsync(repoRoot, target, includeTransitive);
+                var projects = DotnetListPackageParser.Parse(json, repoRoot);
+                if (projects.Count == 0)
+                {
+                    inventory.Projects.Add(new ProjectInventory
+                    {
+                        CsprojPath = PathHelpers.ToRepoRelativePath(repoRoot, target)
+                    });
+                    continue;
+                }
+
+                inventory.Projects.AddRange(projects);
+            }
+            catch (Exception ex)
+            {
+                exitCode = 2;
+                Log.Error(ex, "Failed to restore/list {Target}", target);
                 inventory.Projects.Add(new ProjectInventory
                 {
                     CsprojPath = PathHelpers.ToRepoRelativePath(repoRoot, target)
                 });
-                continue;
             }
-
-            inventory.Projects.AddRange(projects);
         }
 
         InventoryWriter.Write(inventoryPath, inventory);
@@ -326,9 +355,9 @@ public static class CliRunner
         var rows = RuleEngine.BuildReportRows(inventory, rulesModel);
         ReportWriter.WriteTsv(outputPath, rows);
 
-        Console.WriteLine($"Report: {outputPath}");
-        Console.WriteLine($"Inventory: {inventoryPath}");
-        return 0;
+        Log.Information("Report: {ReportPath}", outputPath);
+        Log.Information("Inventory: {InventoryPath}", inventoryPath);
+        return exitCode;
     }
 
     private static string GetDefaultOutputPath(string dataRoot, string repoRoot)
